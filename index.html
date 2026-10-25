@@ -1,0 +1,1628 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GBC WorshipFlow</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        gbc: {
+                            bg: '#050605',
+                            surface: '#0B0F0C',
+                            card: '#101612',
+                            primary: '#00C875',
+                            secondary: '#1B8F5A',
+                            highlight: '#B8F5D3',
+                            text: '#F5F7F5',
+                            muted: '#A0AAA3',
+                            border: '#202A23',
+                            error: '#EF4444'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        heading: ['Plus Jakarta Sans', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #050605;
+            color: #F5F7F5;
+            overflow-x: hidden;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0B0F0C;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #202A23;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #1B8F5A;
+        }
+
+        /* Glassmorphism & Animations */
+        .glass-panel {
+            background: rgba(16, 22, 18, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(32, 42, 35, 0.8);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-panel:hover {
+            border-color: rgba(0, 200, 117, 0.3);
+            box-shadow: 0 12px 40px 0 rgba(0, 200, 117, 0.05);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* Particle Background Canvas */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* Chord Sheet Styling */
+        .chord-sheet {
+            font-family: 'Courier New', Courier, monospace;
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+    </style>
+
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import {initializeApp} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import {getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {getFirestore, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc, updateDoc, addDoc} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyD7Gct4lnmd7MKm4fVo4V_ber2hJ9oO3cQ",
+            authDomain: "gbc-worsipflow.firebaseapp.com",
+            projectId: "gbc-worsipflow",
+            storageBucket: "gbc-worsipflow.firebasestorage.app",
+            messagingSenderId: "35785726517",
+            appId: "1:35785726517:web:6489d0ee7971eb3568ef7c",
+            measurementId: "G-NSJDEL22DK"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Secondary app for creating users without logging out current admin
+        const secondaryApp = initializeApp(firebaseConfig, "Secondary");
+        const secondaryAuth = getAuth(secondaryApp);
+
+        // Global Env Variables
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'gbc-worshipflow-v1';
+        const getColRef = (colName) => collection(db, 'artifacts', appId, 'public', 'data', colName);
+        const getDocRef = (colName, docId) => doc(db, 'artifacts', appId, 'public', 'data', colName, docId);
+
+        // --- Icons (Lucide React implementation proxy) ---
+        const Icon = ({name, size = 24, className = ""}) => {
+            const elRef = React.useRef(null);
+            React.useEffect(() => {
+                if (elRef.current) {
+                    elRef.current.innerHTML = '';
+                    lucide.createIcons({
+                        icons: {[name]: lucide.icons[name]},
+                        nameAttr: 'data-lucide',
+                        attrs: {class: className, width: size, height: size},
+                        root: elRef.current
+                    });
+                }
+            }, [name, size, className]);
+            return <span ref={elRef} data-lucide={name} className={className} style={{display: 'inline-flex', alignItems: 'center', justifyContent: 'center'}}></span>;
+        };
+
+        // --- Global Particle Background Component ---
+        const ParticleBackground = () => {
+            React.useEffect(() => {
+                const canvas = document.getElementById('particle-canvas');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                let animationFrameId;
+
+                let width = canvas.width = window.innerWidth;
+                let height = canvas.height = window.innerHeight;
+
+                const handleResize = () => {
+                    width = canvas.width = window.innerWidth;
+                    height = canvas.height = window.innerHeight;
+                };
+                window.addEventListener('resize', handleResize);
+
+                const particles = Array.from({length: 60}, () => ({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    radius: Math.random() * 2.5 + 0.8,
+                    vx: (Math.random() - 0.5) * 0.5,
+                    vy: (Math.random() - 0.5) * 0.5,
+                    alpha: Math.random() * 0.7 + 0.2
+                }));
+
+                const render = () => {
+                    ctx.clearRect(0, 0, width, height);
+
+                    particles.forEach(p => {
+                        p.x += p.vx;
+                        p.y += p.vy;
+
+                        if (p.x < 0) p.x = width;
+                        if (p.x > width) p.x = 0;
+                        if (p.y < 0) p.y = height;
+                        if (p.y > height) p.y = 0;
+
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(0, 200, 117, ${p.alpha})`;
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = '#00C875';
+                        ctx.fill();
+                    });
+
+                    animationFrameId = requestAnimationFrame(render);
+                };
+
+                render();
+
+                return () => {
+                    window.removeEventListener('resize', handleResize);
+                    cancelAnimationFrame(animationFrameId);
+                };
+            }, []);
+
+            return <canvas id="particle-canvas"></canvas>;
+        };
+
+        // --- Transparent Consistent Logo Component with href support ---
+        const Logo = ({href = "#", size = 100}) => (
+            <div className="flex flex-col items-center mb-8">
+                <Logo href="logo.png" size={100} />
+
+                <h1 className="text-2xl font-bold mt-4">
+                    GBC WorshipFlow
+                </h1>
+
+                <p className="text-gray-400 mt-2">
+                    Worship Ministry Portal
+                </p>
+            </div>
+        );
+
+        // --- Utility: Transposer & Chord Sheet Formatter ---
+        const NOTES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+        const ENHARMONICS = {'Db': 'C#', 'D#': 'Eb', 'Gb': 'F#', 'G#': 'Ab', 'A#': 'Bb'};
+
+        const normalizeNote = (note) => ENHARMONICS[note] || note;
+        const getNoteIndex = (note) => NOTES.indexOf(normalizeNote(note));
+
+        const transposeChord = (chord, steps) => {
+            const match = chord.match(/^([CDEFGAB][b#]?)(.*)$/);
+            if (!match) return chord;
+            const [, root, suffix] = match;
+            const idx = getNoteIndex(root);
+            if (idx === -1) return chord;
+
+            let newIdx = (idx + steps) % 12;
+            if (newIdx < 0) newIdx += 12;
+
+            let transposedSuffix = suffix;
+            const slashMatch = suffix.match(/^\/(.*)$/);
+            if (slashMatch) {
+                const slashRoot = slashMatch[1];
+                const slashIdx = getNoteIndex(slashRoot);
+                if (slashIdx !== -1) {
+                    let newSlashIdx = (slashIdx + steps) % 12;
+                    if (newSlashIdx < 0) newSlashIdx += 12;
+                    transposedSuffix = '/' + NOTES[newSlashIdx];
+                }
+            }
+            return NOTES[newIdx] + transposedSuffix;
+        };
+
+        const calculateSteps = (fromKey, toKey) => {
+            const fromIdx = getNoteIndex(fromKey);
+            const toIdx = getNoteIndex(toKey);
+            if (fromIdx === -1 || toIdx === -1) return 0;
+            return toIdx - fromIdx;
+        };
+
+        const renderChordSheet = (text, steps) => {
+            if (!text) return null;
+            const lines = text.split('\n');
+            const bracketRegex = /\[(.*?)\]/g;
+            const sectionRegex = /^[\s\[\(]*(Verse|Pre-Chorus|Chorus|Bridge|Intro|Outro|Instrumental)[\s\d]*[\]\):]*\s*$/i;
+
+            return lines.map((line, i) => {
+                if (!line.trim()) return <div key={i} className="h-4"></div>;
+
+                if (sectionRegex.test(line)) {
+                    const cleanSectionName = line.trim().replace(/[\[\]\(\):]/g, '');
+                    return <div key={i} className="text-gbc-primary font-bold uppercase tracking-widest text-xs mt-6 mb-2 border-b border-gbc-primary/20 pb-1 inline-block">{cleanSectionName}</div>;
+                }
+
+                if (bracketRegex.test(line)) {
+                    let chordLineStr = "";
+                    let lyricLineStr = "";
+                    let lastIdx = 0;
+                    let match;
+
+                    bracketRegex.lastIndex = 0;
+
+                    while ((match = bracketRegex.exec(line)) !== null) {
+                        const chordText = transposeChord(match[1].trim(), steps);
+                        const matchStart = match.index;
+                        const precedingText = line.substring(lastIdx, matchStart);
+
+                        chordLineStr += ' '.repeat(Math.max(0, precedingText.length)) + chordText;
+                        lyricLineStr += precedingText;
+
+                        lastIdx = match.index + match[0].length;
+                    }
+                    lyricLineStr += line.substring(lastIdx);
+
+                    return (
+                        <div key={i} className="mb-2">
+                            <div className="font-mono text-gbc-highlight font-bold tracking-wide whitespace-pre">{chordLineStr}</div>
+                            <div className="font-mono text-gbc-text whitespace-pre">{lyricLineStr}</div>
+                        </div>
+                    );
+                }
+
+                return <div key={i} className="font-mono text-gbc-text whitespace-pre">{line}</div>;
+            });
+        };
+
+        // --- Contexts ---
+        const AppContext = React.createContext();
+
+        const AppProvider = ({children}) => {
+            const [user, setUser] = React.useState(null);
+            const [userProfile, setUserProfile] = React.useState(null);
+            const [loading, setLoading] = React.useState(true);
+            const [users, setUsers] = React.useState([]);
+            const [songs, setSongs] = React.useState([]);
+            const [schedules, setSchedules] = React.useState([]);
+            const [events, setEvents] = React.useState([]);
+            const [announcements, setAnnouncements] = React.useState([]);
+
+            React.useEffect(() => {
+                const unsubscribeAuth = onAuthStateChanged(auth, async (authUser) => {
+                    if (authUser) {
+                        setUser(authUser);
+                        try {
+                            const profileSnap = await getDoc(getDocRef('users', authUser.uid));
+                            if (profileSnap.exists()) {
+                                setUserProfile({id: profileSnap.id, ...profileSnap.data()});
+                            } else {
+                                const defaultRole = authUser.email?.includes('member') ? 'Member' : 'Director';
+                                const newProfile = {
+                                    uid: authUser.uid,
+                                    displayName: authUser.email ? authUser.email.split('@')[0] : 'Worship Team Member',
+                                    role: defaultRole,
+                                    status: 'Active'
+                                };
+                                await setDoc(getDocRef('users', authUser.uid), newProfile);
+                                setUserProfile({id: authUser.uid, ...newProfile});
+                            }
+                        } catch (e) {
+                            console.error("Error fetching user profile:", e);
+                            setUserProfile({
+                                id: authUser.uid,
+                                displayName: authUser.email ? authUser.email.split('@')[0] : 'Worship Team Member',
+                                role: 'Director',
+                                status: 'Active'
+                            });
+                        }
+                    } else {
+                        setUser(null);
+                        setUserProfile(null);
+                    }
+                    setLoading(false);
+                });
+                return () => unsubscribeAuth();
+            }, []);
+
+            // Data Listeners
+            React.useEffect(() => {
+                if (!user) return;
+
+                const unsubs = [];
+
+                unsubs.push(onSnapshot(getColRef('users'), (snap) => {
+                    setUsers(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                }, (err) => console.error("Error fetching users", err)));
+
+                unsubs.push(onSnapshot(getColRef('songs'), (snap) => {
+                    setSongs(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                }));
+
+                unsubs.push(onSnapshot(getColRef('schedules'), (snap) => {
+                    setSchedules(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                }));
+
+                unsubs.push(onSnapshot(getColRef('events'), (snap) => {
+                    setEvents(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                }));
+
+                unsubs.push(onSnapshot(getColRef('announcements'), (snap) => {
+                    setAnnouncements(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                }));
+
+                return () => unsubs.forEach(unsub => unsub());
+            }, [user]);
+
+            const isDirector = userProfile?.role === 'Director';
+
+            const value = {
+                user, userProfile, users, songs, schedules, events, announcements, loading,
+                isDirector
+            };
+
+            return <AppContext.Provider value={value}>{!loading && children}</AppContext.Provider>;
+        };
+
+        const useAppContext = () => React.useContext(AppContext);
+
+        // --- UI Components ---
+        const Button = ({children, variant = 'primary', className = '', ...props}) => {
+            const baseStyle = "px-4 py-2 rounded-md font-medium transition-all duration-200 flex items-center justify-center gap-2";
+            const variants = {
+                primary: "bg-gbc-primary text-gbc-bg hover:bg-gbc-highlight",
+                secondary: "bg-transparent border border-gbc-border text-gbc-text hover:border-gbc-secondary hover:text-gbc-highlight",
+                danger: "bg-transparent border border-gbc-error/50 text-gbc-error hover:bg-gbc-error/10"
+            };
+            return (
+                <button className={`${baseStyle} ${variants[variant]} ${className}`} {...props}>
+                    {children}
+                </button>
+            );
+        };
+
+        const Input = ({label, className = '', ...props}) => (
+            <div className={`flex flex-col gap-1.5 ${className}`}>
+                {label && <label className="text-sm font-medium text-gbc-muted">{label}</label>}
+                <input
+                    className="bg-gbc-surface border border-gbc-border rounded-md px-3 py-2 text-gbc-text focus:outline-none focus:border-gbc-primary transition-colors"
+                    {...props}
+                />
+            </div>
+        );
+
+        const Select = ({label, options, className = '', ...props}) => (
+            <div className={`flex flex-col gap-1.5 ${className}`}>
+                {label && <label className="text-sm font-medium text-gbc-muted">{label}</label>}
+                <select
+                    className="bg-gbc-surface border border-gbc-border rounded-md px-3 py-2 text-gbc-text focus:outline-none focus:border-gbc-primary transition-colors appearance-none"
+                    {...props}
+                >
+                    <option value="">Select...</option>
+                    {options.map((opt, i) => (
+                        <option key={i} value={opt.value || opt}>{opt.label || opt}</option>
+                    ))}
+                </select>
+            </div>
+        );
+
+        const Textarea = ({label, className = '', ...props}) => (
+            <div className={`flex flex-col gap-1.5 ${className}`}>
+                {label && <label className="text-sm font-medium text-gbc-muted">{label}</label>}
+                <textarea
+                    className="bg-gbc-surface border border-gbc-border rounded-md px-3 py-2 text-gbc-text focus:outline-none focus:border-gbc-primary transition-colors min-h-[100px]"
+                    {...props}
+                />
+            </div>
+        );
+
+        const Card = ({children, className = ''}) => (
+            <div className={`glass-panel rounded-xl p-6 ${className}`}>
+                {children}
+            </div>
+        );
+
+        const Modal = ({isOpen, onClose, title, children}) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gbc-bg/80 backdrop-blur-sm">
+                    <div className="bg-gbc-card border border-gbc-border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
+                        <div className="sticky top-0 bg-gbc-card/95 backdrop-blur border-b border-gbc-border p-4 flex justify-between items-center z-10">
+                            <h3 className="text-xl font-heading font-semibold text-gbc-text">{title}</h3>
+                            <button onClick={onClose} className="text-gbc-muted hover:text-gbc-text">
+                                <Icon name="x" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            {children}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Screens ---
+
+        const LoginScreen = () => {
+            const [isLogin, setIsLogin] = React.useState(true);
+            const [username, setUsername] = React.useState('');
+            const [password, setPassword] = React.useState('');
+            const [name, setName] = React.useState('');
+            const [error, setError] = React.useState('');
+            const [loading, setLoading] = React.useState(false);
+
+            const handleAuth = async (e) => {
+                e.preventDefault();
+                setError('');
+                setLoading(true);
+
+                const sanitizedUsername = username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+                if (!sanitizedUsername) {
+                    setError('Please enter a valid username.');
+                    setLoading(false);
+                    return;
+                }
+                const email = `${sanitizedUsername}@gbc-worshipflow.com`;
+
+                try {
+                    if (isLogin) {
+                        await signInWithEmailAndPassword(auth, email, password);
+                    } else {
+                        const userCred = await createUserWithEmailAndPassword(auth, email, password);
+                        await setDoc(getDocRef('users', userCred.user.uid), {
+                            uid: userCred.user.uid,
+                            username: sanitizedUsername,
+                            displayName: name,
+                            role: 'Member',
+                            status: 'Active',
+                            createdAt: new Date().toISOString()
+                        });
+                    }
+                } catch (err) {
+                    console.error("Auth/Firestore Error:", err);
+                    if (err.code === 'auth/invalid-credential') {
+                        setError('Invalid username or password.');
+                    } else if (err.code === 'auth/email-already-in-use') {
+                        setError('This username is already taken. Please sign in or choose another.');
+                    } else {
+                        setError(`Error: ${err.message}`);
+                    }
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4 relative">
+                    <Card className="w-full max-w-md relative z-10">
+                        <div className="text-center mb-8 flex flex-col items-center">
+                            <div className="mb-4">
+                                <Logo href="#" size={64} />
+                            </div>
+                            <h1 className="text-2xl font-heading font-bold">GBC WorshipFlow</h1>
+                            <p className="text-gbc-muted mt-2">Worship Ministry Portal</p>
+                        </div>
+
+                        {error && <div className="bg-gbc-error/10 text-gbc-error p-3 rounded-md mb-4 text-sm">{error}</div>}
+
+                        <form onSubmit={handleAuth} className="space-y-4">
+                            {!isLogin && (
+                                <Input label="Display Name" required value={name} onChange={e => setName(e.target.value)} />
+                            )}
+                            <Input label="Username" required value={username} onChange={e => setUsername(e.target.value)} />
+                            <Input type="password" label="Password" required value={password} onChange={e => setPassword(e.target.value)} />
+
+                            <Button type="submit" className="w-full mt-6" disabled={loading}>
+                                {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
+                            </Button>
+                        </form>
+
+                        <div className="mt-6 text-center text-sm text-gbc-muted">
+                            <button onClick={() => setIsLogin(!isLogin)} className="hover:text-gbc-primary transition-colors font-medium text-base">
+                                {isLogin ? "Create a new account" : "Already have an account? Sign in"}
+                            </button>
+                        </div>
+                    </Card>
+                </div>
+            );
+        };
+
+        const Dashboard = () => {
+            const {userProfile, schedules, announcements} = useAppContext();
+
+            const now = new Date().toISOString();
+            const upcomingSchedules = schedules
+                .filter(s => s.status === 'Published' && s.date >= now.split('T')[0])
+                .sort((a, b) => a.date.localeCompare(b.date));
+            const nextService = upcomingSchedules[0];
+
+            const recentAnnouncements = announcements
+                .filter(a => a.status === 'Published')
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                .slice(0, 3);
+
+            return (
+                <div className="space-y-8 animate-fade-in">
+                    <div>
+                        <h2 className="text-2xl sm:text-3xl font-heading font-bold text-gbc-text">Welcome, {userProfile?.displayName || 'Worship Team Member'},</h2>
+                        <p className="text-gbc-muted mt-1 text-sm sm:text-base">Here's your worship ministry overview.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <Card className="col-span-1 lg:col-span-2 border-gbc-primary/30 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-gbc-primary/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
+                            <div className="flex items-center gap-3 mb-4">
+                                <Icon name="calendar" className="text-gbc-primary" />
+                                <h3 className="text-xl font-heading font-semibold">Next Service</h3>
+                            </div>
+
+                            {nextService ? (
+                                <div>
+                                    <div className="mb-6">
+                                        <div className="text-xl sm:text-2xl font-bold">{new Date(nextService.date).toLocaleDateString('en-US', {weekday: 'long', month: 'long', day: 'numeric'})}</div>
+                                        <div className="text-gbc-muted">{nextService.title}</div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <h4 className="text-sm font-semibold text-gbc-muted uppercase tracking-wider">Setlist</h4>
+                                        {nextService.songs?.map((song, idx) => (
+                                            <div key={idx} className="flex items-center justify-between bg-gbc-surface/50 p-3 rounded-lg border border-gbc-border">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-gbc-muted font-mono">{idx + 1}</span>
+                                                    <span className="font-medium text-sm sm:text-base">{song.title}</span>
+                                                </div>
+                                                <div className="flex items-center gap-4 text-sm text-gbc-muted">
+                                                    <span className="px-2 py-0.5 bg-gbc-bg rounded text-gbc-highlight border border-gbc-primary/20 text-xs sm:text-sm">Key: {song.key}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="py-10 text-center text-gbc-muted">
+                                    <Icon name="calendar-x" size={48} className="mx-auto mb-3 opacity-50" />
+                                    <p>No upcoming published services.</p>
+                                </div>
+                            )}
+                        </Card>
+
+                        <Card className="col-span-1">
+                            <div className="flex items-center gap-3 mb-4">
+                                <Icon name="bell" className="text-gbc-primary" />
+                                <h3 className="text-xl font-heading font-semibold">Announcements</h3>
+                            </div>
+                            {recentAnnouncements.length > 0 ? (
+                                <div className="space-y-4">
+                                    {recentAnnouncements.map(a => (
+                                        <div key={a.id} className="pb-4 border-b border-gbc-border last:border-0 last:pb-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                {a.isImportant && <span className="w-2 h-2 rounded-full bg-gbc-primary"></span>}
+                                                <h4 className="font-medium text-sm sm:text-base">{a.title}</h4>
+                                            </div>
+                                            <p className="text-xs sm:text-sm text-gbc-muted line-clamp-2">{a.body}</p>
+                                            <span className="text-[10px] sm:text-xs text-gbc-muted/50 mt-2 block">{new Date(a.createdAt).toLocaleDateString()}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-gbc-muted text-sm text-center py-4">No recent announcements.</p>
+                            )}
+                        </Card>
+                    </div>
+                </div>
+            );
+        };
+
+        const ScheduleList = ({type = 'weekly'}) => {
+            const {schedules, events, isDirector, users, songs} = useAppContext();
+            const [selectedDate, setSelectedDate] = React.useState(new Date());
+            const [isModalOpen, setIsModalOpen] = React.useState(false);
+            const [editingSchedule, setEditingSchedule] = React.useState(null);
+            const [viewingSchedule, setViewingSchedule] = React.useState(null);
+
+            const dataSource = type === 'weekly' ? schedules : events;
+
+            const year = selectedDate.getFullYear();
+            const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+            const selectedMonthStr = `${year}-${month}`;
+
+            const handlePrevMonth = () => {
+                setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1, 1));
+            };
+
+            const handleNextMonth = () => {
+                setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 1));
+            };
+
+            const handleMonthChange = (e) => {
+                const [y, m] = e.target.value.split('-');
+                if (y && m) {
+                    setSelectedDate(new Date(parseInt(y), parseInt(m) - 1, 1));
+                }
+            };
+
+            let filteredList = dataSource.sort((a, b) => b.date.localeCompare(a.date));
+            filteredList = filteredList.filter(s => s.date && s.date.startsWith(selectedMonthStr));
+
+            if (!isDirector) {
+                filteredList = filteredList.filter(s => s.status === 'Published');
+            }
+
+            const handleSave = async (scheduleData) => {
+                if (!isDirector) return;
+                try {
+                    if (scheduleData.id) {
+                        await updateDoc(getDocRef(type === 'weekly' ? 'schedules' : 'events', scheduleData.id), scheduleData);
+                    } else {
+                        await addDoc(getColRef(type === 'weekly' ? 'schedules' : 'events'), {
+                            ...scheduleData,
+                            createdAt: new Date().toISOString()
+                        });
+                    }
+                    if (scheduleData.date) {
+                        const [y, m] = scheduleData.date.split('-');
+                        if (y && m) setSelectedDate(new Date(parseInt(y), parseInt(m) - 1, 1));
+                    }
+                    setIsModalOpen(false);
+                } catch (e) {
+                    console.error("Error saving schedule: " + e.message);
+                }
+            };
+
+            const handleDelete = async (id) => {
+                if (!isDirector) return;
+                try {
+                    await deleteDoc(getDocRef(type === 'weekly' ? 'schedules' : 'events', id));
+                    setViewingSchedule(null);
+                } catch (e) {console.error(e);}
+            };
+
+            const daysInMonth = new Date(year, parseInt(month), 0).getDate();
+            const firstDayIndex = new Date(year, parseInt(month) - 1, 1).getDay();
+            const calendarDays = [];
+            for (let i = 0; i < firstDayIndex; i++) {
+                calendarDays.push(null);
+            }
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dStr = `${year}-${month}-${String(d).padStart(2, '0')}`;
+                const match = dataSource.find(item => item.date === dStr && (isDirector || item.status === 'Published'));
+                calendarDays.push({day: d, dateStr: dStr, schedule: match});
+            }
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h2 className="text-2xl font-heading font-bold">{type === 'weekly' ? 'Worship Schedules' : 'Special Events'}</h2>
+                            <p className="text-gbc-muted text-sm mt-1">Manage and view {type === 'weekly' ? 'weekly lineups' : 'event lineups'}.</p>
+                        </div>
+                        <div className="flex items-center gap-3 flex-wrap w-full sm:w-auto justify-between sm:justify-end">
+                            <div className="flex items-center gap-2 bg-gbc-surface border border-gbc-border rounded-lg p-1 px-2 sm:px-3">
+                                <button onClick={handlePrevMonth} className="text-gbc-muted hover:text-gbc-text p-1 transition-colors" title="Previous Month">
+                                    <Icon name="chevron-left" size={16} />
+                                </button>
+                                <input
+                                    type="month"
+                                    value={selectedMonthStr}
+                                    onChange={handleMonthChange}
+                                    className="bg-transparent text-gbc-text font-medium text-xs sm:text-sm focus:outline-none cursor-pointer"
+                                />
+                                <button onClick={handleNextMonth} className="text-gbc-muted hover:text-gbc-text p-1 transition-colors" title="Next Month">
+                                    <Icon name="chevron-right" size={16} />
+                                </button>
+                            </div>
+                            {isDirector && (
+                                <Button onClick={() => {setEditingSchedule(null); setIsModalOpen(true);}} className="text-xs sm:text-sm px-3 py-2">
+                                    <Icon name="plus" size={16} /> New {type === 'weekly' ? 'Schedule' : 'Event'}
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Minimized Monthly Preview Calendar Card */}
+                    <Card className="p-2.5 max-w-sm sm:max-w-md mx-auto">
+                        <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-gbc-border">
+                            <h3 className="font-heading font-semibold text-[11px] text-gbc-primary flex items-center gap-1">
+                                <Icon name="calendar-days" size={12} />
+                                Monthly Preview ({new Date(year, parseInt(month) - 1).toLocaleString('default', {month: 'short', year: 'numeric'})})
+                            </h3>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1 text-center text-[9px] text-gbc-muted font-medium mb-1">
+                            <div>S</div><div>M</div><div>T</div><div>W</div><div>T</div><div>F</div><div>S</div>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1">
+                            {calendarDays.map((item, index) => {
+                                if (!item) return <div key={index} className="h-6 bg-gbc-surface/10 rounded opacity-10"></div>;
+                                const hasSchedule = !!item.schedule;
+                                return (
+                                    <div
+                                        key={index}
+                                        onClick={() => hasSchedule && setViewingSchedule(item.schedule)}
+                                        className={`h-6 p-0.5 rounded border flex flex-col justify-between transition-all ${hasSchedule ? 'bg-gbc-primary/15 border-gbc-primary/50 cursor-pointer hover:border-gbc-primary hover:bg-gbc-primary/30' : 'bg-gbc-surface/30 border-gbc-border/40'}`}
+                                    >
+                                        <div className="flex justify-between items-center text-[8px]">
+                                            <span className={hasSchedule ? 'font-bold text-gbc-highlight' : 'text-gbc-muted'}>{item.day}</span>
+                                            {hasSchedule && <span className="w-1 h-1 rounded-full bg-gbc-primary"></span>}
+                                        </div>
+                                        {hasSchedule ? (
+                                            <div className="text-[7px] text-gbc-text truncate font-medium bg-gbc-bg/90 px-0.5 rounded text-center">
+                                                {item.schedule.title ? item.schedule.title.split(' ')[0] : 'Event'}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </Card>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {filteredList.length === 0 ? (
+                            <div className="col-span-full py-12 text-center text-gbc-muted border border-dashed border-gbc-border rounded-xl">
+                                <Icon name="calendar-x" size={48} className="mx-auto mb-3 opacity-20" />
+                                <p>No {type === 'weekly' ? 'schedules' : 'events'} found for this period.</p>
+                            </div>
+                        ) : (
+                            filteredList.map(s => (
+                                <Card key={s.id} className="cursor-pointer hover:border-gbc-primary/50 transition-colors group" >
+                                    <div onClick={() => setViewingSchedule(s)}>
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="px-2 py-1 text-xs rounded-full bg-gbc-surface border border-gbc-border text-gbc-muted">
+                                                {s.date}
+                                            </div>
+                                            <span className={`text-xs px-2 py-1 rounded-full ${s.status === 'Published' ? 'bg-gbc-primary/20 text-gbc-primary' : 'bg-gbc-muted/20 text-gbc-muted'}`}>
+                                                {s.status}
+                                            </span>
+                                        </div>
+                                        <h3 className="text-lg font-heading font-semibold mb-2 group-hover:text-gbc-primary transition-colors">{s.title || 'Sunday Worship Service'}</h3>
+                                        <div className="space-y-1 mt-4">
+                                            {s.songs?.slice(0, 3).map((song, i) => (
+                                                <div key={i} className="text-sm text-gbc-muted truncate flex items-center gap-2">
+                                                    <span className="opacity-50">{i + 1}.</span> {song.title}
+                                                </div>
+                                            ))}
+                                            {s.songs?.length > 3 && <div className="text-xs text-gbc-muted/50 italic">+ {s.songs.length - 3} more</div>}
+                                        </div>
+                                    </div>
+                                    {isDirector && (
+                                        <div className="mt-4 pt-4 border-t border-gbc-border flex justify-end">
+                                            <Button variant="secondary" className="px-3 py-1 text-xs" onClick={(e) => {e.stopPropagation(); setEditingSchedule(s); setIsModalOpen(true);}}>Edit</Button>
+                                        </div>
+                                    )}
+                                </Card>
+                            ))
+                        )}
+                    </div>
+
+                    {isDirector && (
+                        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingSchedule ? "Edit Lineup" : "New Lineup"}>
+                            <ScheduleEditorForm initialData={editingSchedule} onSave={handleSave} onCancel={() => setIsModalOpen(false)} type={type} />
+                        </Modal>
+                    )}
+
+                    <Modal isOpen={!!viewingSchedule} onClose={() => setViewingSchedule(null)} title="Schedule Details">
+                        {viewingSchedule && <ScheduleViewer schedule={viewingSchedule} isDirector={isDirector} onEdit={() => {setEditingSchedule(viewingSchedule); setViewingSchedule(null); setIsModalOpen(true);}} onDelete={() => handleDelete(viewingSchedule.id)} />}
+                    </Modal>
+                </div>
+            );
+        };
+
+        const ScheduleEditorForm = ({initialData, onSave, onCancel, type}) => {
+            const {users, songs} = useAppContext();
+            const activeUsers = users.filter(u => u.status === 'Active');
+
+            const [formData, setFormData] = React.useState(initialData || {
+                date: '',
+                title: type === 'weekly' ? 'Sunday Worship Service' : '',
+                status: 'Draft',
+                notes: '',
+                songs: [],
+                band: {leadGuitar: '', bass: '', acoustic: '', keys: ''},
+                vocalists: []
+            });
+
+            const addSongSlot = () => {
+                if (formData.songs.length >= 6) return;
+                setFormData(prev => ({
+                    ...prev,
+                    songs: [...prev.songs, {title: '', songId: '', leaderId: '', key: 'C', notes: '', videoUrl: ''}]
+                }));
+            };
+
+            const updateSongSlot = (index, field, value) => {
+                const newSongs = [...formData.songs];
+                if (field === 'songId') {
+                    const song = songs.find(s => s.id === value);
+                    newSongs[index] = {...newSongs[index], songId: value, title: song?.title || '', key: song?.defaultKey || 'C'};
+                } else {
+                    newSongs[index][field] = value;
+                }
+                setFormData({...formData, songs: newSongs});
+            };
+
+            const removeSongSlot = (index) => {
+                setFormData(prev => ({...prev, songs: prev.songs.filter((_, i) => i !== index)}));
+            };
+
+            const handleBandChange = (instrument, userId) => {
+                setFormData(prev => ({...prev, band: {...prev.band, [instrument]: userId}}));
+            };
+
+            return (
+                <form onSubmit={e => {e.preventDefault(); onSave(formData);}} className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Input label="Date" type="date" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                        <Select label="Status" options={['Draft', 'Published']} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} />
+                        <Input label="Title" className="col-span-full sm:col-span-2" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                    </div>
+
+                    <div className="border-t border-gbc-border pt-4">
+                        <div className="flex justify-between items-center mb-4">
+                            <h4 className="font-semibold text-gbc-primary text-sm sm:text-base">Worship Setlist ({formData.songs.length})</h4>
+                            <Button type="button" variant="secondary" onClick={addSongSlot} className="py-1 px-2 text-xs"><Icon name="plus" size={14} /> Add Song</Button>
+                        </div>
+                        <div className="space-y-4">
+                            {formData.songs.map((song, i) => (
+                                <div key={i} className="p-4 bg-gbc-surface rounded-lg border border-gbc-border relative">
+                                    <button type="button" onClick={() => removeSongSlot(i)} className="absolute top-2 right-2 text-gbc-muted hover:text-gbc-error"><Icon name="x" size={16} /></button>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                        <Select label={`Song ${i + 1}`} options={songs.map(s => ({label: s.title, value: s.id}))} value={song.songId} onChange={e => updateSongSlot(i, 'songId', e.target.value)} required />
+                                        <Select label="Key" options={NOTES} value={song.key} onChange={e => updateSongSlot(i, 'key', e.target.value)} />
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <Select label="Song Leader" options={activeUsers.map(u => ({label: u.displayName, value: u.id}))} value={song.leaderId} onChange={e => updateSongSlot(i, 'leaderId', e.target.value)} required />
+                                        <Input label="Notes (optional)" value={song.notes} onChange={e => updateSongSlot(i, 'notes', e.target.value)} placeholder="e.g. Acoustic intro" />
+                                        <Input label="Reference Video URL" value={song.videoUrl || ''} onChange={e => updateSongSlot(i, 'videoUrl', e.target.value)} placeholder="YouTube URL" />
+                                    </div>
+                                </div>
+                            ))}
+                            {formData.songs.length === 0 && <p className="text-sm text-gbc-muted italic">No songs added yet. Aim for 3-4 songs.</p>}
+                        </div>
+                    </div>
+
+                    <div className="border-t border-gbc-border pt-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                        <div className="col-span-full mb-2"><h4 className="font-semibold text-gbc-primary text-sm sm:text-base">Team Assignments</h4></div>
+                        <Select label="Lead Guitar" options={activeUsers.map(u => ({label: u.displayName, value: u.id}))} value={formData.band?.leadGuitar || ''} onChange={e => handleBandChange('leadGuitar', e.target.value)} />
+                        <Select label="Acoustic Guitar" options={activeUsers.map(u => ({label: u.displayName, value: u.id}))} value={formData.band?.acoustic || ''} onChange={e => handleBandChange('acoustic', e.target.value)} />
+                        <Select label="Bass Guitar" options={activeUsers.map(u => ({label: u.displayName, value: u.id}))} value={formData.band?.bass || ''} onChange={e => handleBandChange('bass', e.target.value)} />
+                        <Select label="Keyboard" options={activeUsers.map(u => ({label: u.displayName, value: u.id}))} value={formData.band?.keys || ''} onChange={e => handleBandChange('keys', e.target.value)} />
+
+                        <div className="col-span-full">
+                            <label className="text-sm font-medium text-gbc-muted mb-1 block">Backup Vocalists</label>
+                            <div className="flex flex-wrap gap-2 p-3 bg-gbc-surface rounded-md border border-gbc-border">
+                                {activeUsers.map(u => {
+                                    const isSelected = formData.vocalists?.includes(u.id);
+                                    return (
+                                        <button type="button" key={u.id}
+                                            onClick={() => setFormData(prev => ({
+                                                ...prev,
+                                                vocalists: isSelected ? prev.vocalists.filter(id => id !== u.id) : [...(prev.vocalists || []), u.id]
+                                            }))}
+                                            className={`px-2 py-1 text-xs rounded-full border transition-colors ${isSelected ? 'bg-gbc-primary text-gbc-bg border-gbc-primary font-medium' : 'bg-transparent text-gbc-muted border-gbc-border hover:border-gbc-muted'}`}
+                                        >
+                                            {u.displayName}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    <Textarea label="General Service Notes" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} placeholder="Rehearsal times, dress code, etc." />
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-gbc-border">
+                        <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+                        <Button type="submit">Save Lineup</Button>
+                    </div>
+                </form>
+            );
+        };
+
+        const ScheduleViewer = ({schedule, isDirector, onEdit, onDelete}) => {
+            const {users} = useAppContext();
+            const getUserName = (id) => users.find(u => u.id === id)?.displayName || 'Unassigned';
+
+            return (
+                <div className="space-y-6">
+                    <div>
+                        <div className="flex items-center gap-3 mb-1">
+                            <h2 className="text-xl sm:text-2xl font-heading font-bold">{schedule.title}</h2>
+                            <span className={`text-xs px-2 py-1 rounded-full ${schedule.status === 'Published' ? 'bg-gbc-primary/20 text-gbc-primary' : 'bg-gbc-error/20 text-gbc-error'}`}>{schedule.status}</span>
+                        </div>
+                        <p className="text-gbc-muted flex items-center gap-2 text-sm"><Icon name="calendar" size={16} /> {new Date(schedule.date).toLocaleDateString('en-US', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})}</p>
+                    </div>
+
+                    <div>
+                        <h3 className="text-base sm:text-lg font-semibold border-b border-gbc-border pb-2 mb-3 text-gbc-primary">Setlist</h3>
+                        {schedule.songs?.length > 0 ? (
+                            <div className="space-y-3">
+                                {schedule.songs.map((song, i) => (
+                                    <div key={i} className="bg-gbc-surface p-4 rounded-lg border border-gbc-border">
+                                        <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
+                                            <div className="flex gap-3">
+                                                <div className="text-gbc-muted font-mono bg-gbc-bg w-6 h-6 flex items-center justify-center rounded shrink-0">{i + 1}</div>
+                                                <div>
+                                                    <h4 className="font-medium text-base sm:text-lg">{song.title}</h4>
+                                                    <p className="text-sm text-gbc-muted">Leader: <span className="text-gbc-text">{getUserName(song.leaderId)}</span></p>
+                                                    {song.videoUrl && <div className="mt-1"><a href={song.videoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-gbc-error hover:text-red-400 inline-flex items-center gap-1 bg-gbc-bg px-2 py-1 rounded"><Icon name="youtube" size={12} /> Reference Video</a></div>}
+                                                    {song.notes && <p className="text-sm text-gbc-muted italic mt-1 bg-gbc-bg px-2 py-1 rounded inline-block">Note: {song.notes}</p>}
+                                                </div>
+                                            </div>
+                                            <div className="text-center bg-gbc-bg border border-gbc-border px-3 py-1 rounded-lg self-end sm:self-auto">
+                                                <div className="text-[10px] text-gbc-muted">Key</div>
+                                                <div className="font-bold text-gbc-highlight text-sm">{song.key}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : <p className="text-gbc-muted text-sm">No songs assigned.</p>}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h3 className="text-base sm:text-lg font-semibold border-b border-gbc-border pb-2 mb-3 text-gbc-primary">Band</h3>
+                            <ul className="space-y-2 text-sm">
+                                <li className="flex justify-between"><span className="text-gbc-muted">Lead Guitar</span> <span>{getUserName(schedule.band?.leadGuitar)}</span></li>
+                                <li className="flex justify-between"><span className="text-gbc-muted">Acoustic</span> <span>{getUserName(schedule.band?.acoustic)}</span></li>
+                                <li className="flex justify-between"><span className="text-gbc-muted">Bass</span> <span>{getUserName(schedule.band?.bass)}</span></li>
+                                <li className="flex justify-between"><span className="text-gbc-muted">Keys</span> <span>{getUserName(schedule.band?.keys)}</span></li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h3 className="text-base sm:text-lg font-semibold border-b border-gbc-border pb-2 mb-3 text-gbc-primary">Vocals</h3>
+                            {schedule.vocalists?.length > 0 ? (
+                                <ul className="space-y-1 text-sm list-disc list-inside">
+                                    {schedule.vocalists.map(id => <li key={id}>{getUserName(id)}</li>)}
+                                </ul>
+                            ) : <p className="text-sm text-gbc-muted">No backup vocalists assigned.</p>}
+                        </div>
+                    </div>
+
+                    {schedule.notes && (
+                        <div>
+                            <h3 className="text-base sm:text-lg font-semibold border-b border-gbc-border pb-2 mb-3 text-gbc-primary">Notes</h3>
+                            <p className="text-sm text-gbc-text bg-gbc-surface p-4 rounded-lg border border-gbc-border whitespace-pre-wrap">{schedule.notes}</p>
+                        </div>
+                    )}
+
+                    {isDirector && (
+                        <div className="flex justify-end gap-3 pt-6 border-t border-gbc-border">
+                            <Button variant="danger" onClick={onDelete}><Icon name="trash-2" size={16} /> Delete</Button>
+                            <Button onClick={onEdit}><Icon name="edit" size={16} /> Edit Lineup</Button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const SongBank = () => {
+            const {songs, isDirector} = useAppContext();
+            const [searchTerm, setSearchTerm] = React.useState('');
+            const [isModalOpen, setIsModalOpen] = React.useState(false);
+            const [editingSong, setEditingSong] = React.useState(null);
+            const [viewingSong, setViewingSong] = React.useState(null);
+
+            const filteredSongs = songs.filter(s =>
+                s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (s.artist && s.artist.toLowerCase().includes(searchTerm.toLowerCase()))
+            ).sort((a, b) => a.title.localeCompare(b.title));
+
+            const handleSave = async (songData) => {
+                if (!isDirector) return;
+                try {
+                    if (songData.id) {
+                        await updateDoc(getDocRef('songs', songData.id), {...songData, updatedAt: new Date().toISOString()});
+                    } else {
+                        await addDoc(getColRef('songs'), {...songData, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()});
+                    }
+                    setIsModalOpen(false);
+                } catch (e) {alert("Error: " + e.message);}
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h2 className="text-2xl font-heading font-bold">Song Bank</h2>
+                            <p className="text-gbc-muted text-sm mt-1">Manage library, lyrics, and chords.</p>
+                        </div>
+                        {isDirector && (
+                            <Button onClick={() => {setEditingSong(null); setIsModalOpen(true);}} className="text-xs sm:text-sm">
+                                <Icon name="plus" size={18} /> Create Song
+                            </Button>
+                        )}
+                    </div>
+
+                    <div className="relative max-w-md">
+                        <Icon name="search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gbc-muted" />
+                        <input
+                            type="text"
+                            placeholder="Search songs or artists..."
+                            className="w-full bg-gbc-surface border border-gbc-border rounded-full pl-10 pr-4 py-2 text-gbc-text focus:outline-none focus:border-gbc-primary text-sm sm:text-base"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="bg-gbc-card rounded-xl border border-gbc-border overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[500px]">
+                                <thead>
+                                    <tr className="bg-gbc-surface text-gbc-muted text-sm border-b border-gbc-border">
+                                        <th className="p-4 font-medium">Title</th>
+                                        <th className="p-4 font-medium hidden md:table-cell">Artist</th>
+                                        <th className="p-4 font-medium text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredSongs.length === 0 ? (
+                                        <tr><td colSpan="3" className="p-8 text-center text-gbc-muted">No songs found.</td></tr>
+                                    ) : (
+                                        filteredSongs.map(song => (
+                                            <tr key={song.id} onClick={() => setViewingSong(song)} className="border-b border-gbc-border/50 hover:bg-gbc-surface/50 transition-colors cursor-pointer">
+                                                <td className="p-4 font-medium text-sm sm:text-base">{song.title}</td>
+                                                <td className="p-4 text-gbc-muted hidden md:table-cell text-sm">{song.artist || '-'}</td>
+                                                <td className="p-4 text-right space-x-2" onClick={e => e.stopPropagation()}>
+                                                    <Button variant="secondary" className="px-3 py-1 text-xs sm:text-sm inline-flex" onClick={() => setViewingSong(song)}>View</Button>
+                                                    {isDirector && (
+                                                        <Button variant="secondary" className="px-3 py-1 text-xs sm:text-sm inline-flex" onClick={() => {setEditingSong(song); setIsModalOpen(true);}}>Edit</Button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {isDirector && (
+                        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingSong ? "Edit Song" : "Create Song"}>
+                            <SongEditorForm initialData={editingSong} onSave={handleSave} onCancel={() => setIsModalOpen(false)} />
+                        </Modal>
+                    )}
+
+                    <Modal isOpen={!!viewingSong} onClose={() => setViewingSong(null)} title="Song Details">
+                        {viewingSong && <SongViewer song={viewingSong} isDirector={isDirector} onEdit={() => {setEditingSong(viewingSong); setViewingSong(null); setIsModalOpen(true);}} onClose={() => setViewingSong(null)} />}
+                    </Modal>
+                </div>
+            );
+        };
+
+        const SongEditorForm = ({initialData, onSave, onCancel}) => {
+            const [formData, setFormData] = React.useState(initialData || {
+                title: '', artist: '', defaultKey: 'C', content: '', notes: ''
+            });
+
+            React.useEffect(() => {
+                if (initialData && !initialData.content && (initialData.lyrics || initialData.chords)) {
+                    setFormData(prev => ({
+                        ...prev,
+                        content: initialData.chords || initialData.lyrics || ''
+                    }));
+                }
+            }, [initialData]);
+
+            return (
+                <form onSubmit={e => {e.preventDefault(); onSave(formData);}} className="space-y-4">
+                    <Input label="Song Title" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Input label="Artist/Group" value={formData.artist} onChange={e => setFormData({...formData, artist: e.target.value})} />
+                        <Select label="Default Key" options={NOTES} value={formData.defaultKey} onChange={e => setFormData({...formData, defaultKey: e.target.value})} />
+                    </div>
+                    <Textarea
+                        label="Lyrics & Chords (Put chords in brackets directly above/within lyrics, e.g. [G]Amazing Grace)"
+                        value={formData.content}
+                        onChange={e => setFormData({...formData, content: e.target.value})}
+                        className="h-64 font-mono text-sm"
+                        required
+                    />
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-gbc-border">
+                        <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+                        <Button type="submit">Save Song</Button>
+                    </div>
+                </form>
+            );
+        };
+
+        const SongViewer = ({song, isDirector, onEdit, onClose}) => {
+            const [targetKey, setTargetKey] = React.useState(song.defaultKey || 'C');
+
+            const contentToRender = song.content || song.chords || song.lyrics;
+            const originalKey = song.defaultKey || 'C';
+            const steps = calculateSteps(originalKey, targetKey);
+
+            return (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <h2 className="text-xl sm:text-2xl font-heading font-bold">{song.title}</h2>
+                            <p className="text-gbc-muted text-base sm:text-lg">{song.artist}</p>
+                        </div>
+                    </div>
+
+                    {contentToRender && (
+                        <div className="glass-panel rounded-xl p-4 sm:p-6">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 pb-4 border-b border-gbc-border">
+                                <h3 className="font-semibold text-gbc-primary flex items-center gap-2 text-sm sm:text-base"><Icon name="music-4" size={18} /> Lyrics & Chords</h3>
+                                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                                    <span className="text-xs sm:text-sm text-gbc-muted">Original: <strong className="text-gbc-text">{originalKey}</strong></span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs sm:text-sm text-gbc-muted">Key:</span>
+                                        <select
+                                            className="bg-gbc-bg border border-gbc-border rounded px-2 sm:px-3 py-1 text-gbc-highlight font-bold focus:outline-none focus:border-gbc-primary text-sm"
+                                            value={targetKey}
+                                            onChange={e => setTargetKey(e.target.value)}
+                                        >
+                                            {NOTES.map((note, idx) => (
+                                                <option key={idx} value={note}>{note}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="chord-sheet text-xs sm:text-sm md:text-base overflow-x-auto pb-4">
+                                {renderChordSheet(contentToRender, steps)}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-gbc-border">
+                        <Button variant="secondary" onClick={onClose} className="text-xs sm:text-sm"><Icon name="x" size={16} /> Close</Button>
+                        {isDirector && (
+                            <Button onClick={onEdit} className="text-xs sm:text-sm"><Icon name="edit" size={16} /> Edit Song</Button>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const Announcements = () => {
+            const {announcements, isDirector, userProfile} = useAppContext();
+            const [isModalOpen, setIsModalOpen] = React.useState(false);
+            const [formData, setFormData] = React.useState({title: '', body: '', status: 'Draft', isImportant: false});
+
+            const displayAnnouncements = isDirector ? announcements : announcements.filter(a => a.status === 'Published');
+            const sorted = displayAnnouncements.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+            const handleSave = async (e) => {
+                e.preventDefault();
+                if (!isDirector) return;
+                try {
+                    if (formData.id) {
+                        await updateDoc(getDocRef('announcements', formData.id), formData);
+                    } else {
+                        await addDoc(getColRef('announcements'), {...formData, authorId: userProfile?.id || 'dir', createdAt: new Date().toISOString()});
+                    }
+                    setIsModalOpen(false);
+                } catch (err) {console.error(err);}
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <h2 className="text-2xl font-heading font-bold">Announcements</h2>
+                        </div>
+                        {isDirector && (
+                            <Button onClick={() => {setFormData({title: '', body: '', status: 'Draft', isImportant: false}); setIsModalOpen(true);}} className="text-xs sm:text-sm">
+                                <Icon name="plus" size={18} /> New
+                            </Button>
+                        )}
+                    </div>
+
+                    <div className="space-y-4">
+                        {sorted.length === 0 ? (
+                            <div className="py-12 text-center text-gbc-muted border border-dashed border-gbc-border rounded-xl">
+                                <p>No announcements.</p>
+                            </div>
+                        ) : (
+                            sorted.map(a => (
+                                <Card key={a.id} className={`border-l-4 ${a.isImportant ? 'border-l-gbc-primary' : 'border-l-gbc-border'}`}>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <h3 className="text-base sm:text-lg font-bold flex items-center gap-2">
+                                            {a.isImportant && <Icon name="alert-circle" size={18} className="text-gbc-primary shrink-0" />}
+                                            {a.title}
+                                        </h3>
+                                        <div className="flex gap-2 items-center">
+                                            {isDirector && <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-gbc-surface border border-gbc-border">{a.status}</span>}
+                                            <span className="text-[10px] sm:text-xs text-gbc-muted">{new Date(a.createdAt).toLocaleDateString()}</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs sm:text-sm text-gbc-muted whitespace-pre-wrap">{a.body}</p>
+                                    {isDirector && (
+                                        <div className="mt-4 flex justify-end gap-2">
+                                            <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => {setFormData(a); setIsModalOpen(true);}}>Edit</Button>
+                                            <Button variant="danger" className="px-3 py-1 text-xs" onClick={() => deleteDoc(getDocRef('announcements', a.id))}>Delete</Button>
+                                        </div>
+                                    )}
+                                </Card>
+                            ))
+                        )}
+                    </div>
+
+                    {isDirector && (
+                        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Announcement">
+                            <form onSubmit={handleSave} className="space-y-4">
+                                <Input label="Title" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                                <Textarea label="Message" required value={formData.body} onChange={e => setFormData({...formData, body: e.target.value})} />
+                                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                                    <Select label="Status" options={['Draft', 'Published']} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="w-full sm:flex-1" />
+                                    <div className="w-full sm:flex-1 flex items-center gap-2 mt-0 sm:mt-6">
+                                        <input type="checkbox" id="important" checked={formData.isImportant} onChange={e => setFormData({...formData, isImportant: e.target.checked})} className="w-4 h-4 accent-gbc-primary bg-gbc-bg" />
+                                        <label htmlFor="important" className="text-sm">Mark as Important</label>
+                                    </div>
+                                </div>
+                                <div className="flex justify-end gap-3 pt-4 border-t border-gbc-border">
+                                    <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                                    <Button type="submit">Save Announcement</Button>
+                                </div>
+                            </form>
+                        </Modal>
+                    )}
+                </div>
+            );
+        };
+
+        const ManageUsers = () => {
+            const {users, isDirector} = useAppContext();
+            const [isModalOpen, setIsModalOpen] = React.useState(false);
+            const [editingUser, setEditingUser] = React.useState(null);
+            const [formData, setFormData] = React.useState({username: '', password: '', displayName: '', role: 'Member', status: 'Active'});
+            const [error, setError] = React.useState('');
+            const [loading, setLoading] = React.useState(false);
+
+            if (!isDirector) return <div className="text-center py-20 text-gbc-error">Unauthorized Access</div>;
+
+            const handleSaveUser = async (e) => {
+                e.preventDefault();
+                setError('');
+                setLoading(true);
+
+                try {
+                    if (editingUser) {
+                        await updateDoc(getDocRef('users', editingUser.id), {
+                            displayName: formData.displayName,
+                            role: formData.role,
+                            status: formData.status
+                        });
+                        setIsModalOpen(false);
+                    } else {
+                        const sanitizedUsername = formData.username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+                        if (!sanitizedUsername) {
+                            setError('Please enter a valid username.');
+                            setLoading(false);
+                            return;
+                        }
+                        const email = `${sanitizedUsername}@gbc-worshipflow.com`;
+
+                        const userCred = await createUserWithEmailAndPassword(secondaryAuth, email, formData.password);
+                        await signOut(secondaryAuth);
+
+                        await setDoc(getDocRef('users', userCred.user.uid), {
+                            uid: userCred.user.uid,
+                            username: sanitizedUsername,
+                            displayName: formData.displayName,
+                            role: formData.role,
+                            status: formData.status || 'Active',
+                            createdAt: new Date().toISOString()
+                        });
+                        setIsModalOpen(false);
+                    }
+                } catch (err) {
+                    console.error("Error saving user:", err);
+                    if (err.code === 'auth/email-already-in-use') {
+                        setError('A user with this username already exists.');
+                    } else {
+                        setError('Error saving user: ' + err.message);
+                    }
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleDeleteUser = async (userId) => {
+                try {
+                    await deleteDoc(getDocRef('users', userId));
+                } catch (e) {
+                    console.error("Error deleting user:", e);
+                }
+            };
+
+            const openCreate = () => {
+                setEditingUser(null);
+                setFormData({username: '', password: '', displayName: '', role: 'Member', status: 'Active'});
+                setIsModalOpen(true);
+            };
+
+            const openEdit = (user) => {
+                setEditingUser(user);
+                setFormData({username: user.username || '', password: '', displayName: user.displayName || '', role: user.role || 'Member', status: user.status || 'Active'});
+                setIsModalOpen(true);
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h2 className="text-2xl font-heading font-bold">Manage Users</h2>
+                            <p className="text-gbc-muted text-sm mt-1">Directory of worship team members synced with Firebase Authentication.</p>
+                        </div>
+                        <Button onClick={openCreate} className="text-xs sm:text-sm">
+                            <Icon name="plus" size={18} /> Add User
+                        </Button>
+                    </div>
+
+                    <Card className="p-0 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[600px]">
+                                <thead>
+                                    <tr className="bg-gbc-surface text-gbc-muted text-sm border-b border-gbc-border">
+                                        <th className="p-4 font-medium">Name</th>
+                                        <th className="p-4 font-medium">Username</th>
+                                        <th className="p-4 font-medium">Role</th>
+                                        <th className="p-4 font-medium">Status</th>
+                                        <th className="p-4 font-medium text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {users.length === 0 ? (
+                                        <tr><td colSpan="5" className="p-8 text-center text-gbc-muted">No users found.</td></tr>
+                                    ) : (
+                                        users.map(u => (
+                                            <tr key={u.id} className="border-b border-gbc-border/50 hover:bg-gbc-surface/30">
+                                                <td className="p-4 font-medium text-sm sm:text-base flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-full bg-gbc-border flex items-center justify-center text-xs text-gbc-muted shrink-0">{u.displayName?.charAt(0) || '?'}</div>
+                                                    <span className="truncate">{u.displayName}</span>
+                                                </td>
+                                                <td className="p-4 text-gbc-muted text-sm">@{u.username}</td>
+                                                <td className="p-4">
+                                                    <span className={`text-xs px-2 py-1 rounded-full ${u.role === 'Director' ? 'bg-gbc-primary/20 text-gbc-primary' : 'bg-gbc-surface border border-gbc-border text-gbc-muted'}`}>
+                                                        {u.role}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className={`flex items-center gap-1.5 text-xs sm:text-sm ${u.status === 'Active' ? 'text-gbc-highlight' : 'text-gbc-error'}`}>
+                                                        <span className={`w-2 h-2 rounded-full ${u.status === 'Active' ? 'bg-gbc-primary' : 'bg-gbc-error'}`}></span>
+                                                        {u.status}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-right space-x-2">
+                                                    <Button variant="secondary" className="px-2 sm:px-3 py-1 text-xs inline-flex" onClick={() => openEdit(u)}>Edit</Button>
+                                                    <Button variant="danger" className="px-2 sm:px-3 py-1 text-xs inline-flex" onClick={() => handleDeleteUser(u.id)}>
+                                                        <Icon name="trash-2" size={14} />
+                                                    </Button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Card>
+
+                    <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingUser ? "Edit User" : "Add New User"}>
+                        <form onSubmit={handleSaveUser} className="space-y-4">
+                            {error && <div className="bg-gbc-error/10 text-gbc-error p-3 rounded-md text-sm">{error}</div>}
+                            <Input label="Display Name" required value={formData.displayName} onChange={e => setFormData({...formData, displayName: e.target.value})} />
+
+                            {!editingUser && (
+                                <>
+                                    <Input label="Username" required value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} placeholder="e.g. john_doe" />
+                                    <Input type="password" label="Password" required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+                                </>
+                            )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Select label="Role" options={['Member', 'Director']} value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} />
+                                <Select label="Status" options={['Active', 'Inactive']} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} />
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4 border-t border-gbc-border">
+                                <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                                <Button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save User'}</Button>
+                            </div>
+                        </form>
+                    </Modal>
+                </div>
+            );
+        };
+
+        const MainLayout = () => {
+            const {userProfile, isDirector} = useAppContext();
+            const [activeTab, setActiveTab] = React.useState('dashboard');
+            const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+
+            const navItems = [
+                {id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard'},
+                {id: 'schedules', label: 'Schedules', icon: 'calendar-days'},
+                {id: 'events', label: 'Other Events', icon: 'star'},
+                {id: 'songs', label: 'Song Bank / Chords', icon: 'music'},
+                {id: 'announcements', label: 'Announcements', icon: 'megaphone'},
+            ];
+
+            if (isDirector) {
+                navItems.push({id: 'users', label: 'Manage Users', icon: 'users'});
+            }
+
+            const renderContent = () => {
+                switch (activeTab) {
+                    case 'dashboard': return <Dashboard />;
+                    case 'schedules': return <ScheduleList type="weekly" />;
+                    case 'events': return <ScheduleList type="special" />;
+                    case 'songs': return <SongBank />;
+                    case 'announcements': return <Announcements />;
+                    case 'users': return isDirector ? <ManageUsers /> : <Dashboard />;
+                    default: return <Dashboard />;
+                }
+            };
+
+            return (
+                <div className="flex h-screen overflow-hidden bg-transparent">
+                    {/* Sidebar Desktop */}
+                    <aside className="hidden md:flex w-64 flex-col border-r border-gbc-border bg-gbc-surface/30 backdrop-blur-xl z-20 shrink-0">
+                        <div className="p-6 border-b border-gbc-border">
+                            <div className="flex items-center gap-3">
+                                <Logo href="#" size={32} />
+                                <span className="font-heading font-bold text-lg tracking-tight">WorshipFlow</span>
+                            </div>
+                        </div>
+                        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+                            {navItems.map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => setActiveTab(item.id)}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === item.id ? 'bg-gbc-primary/10 text-gbc-primary shadow-[inset_2px_0_0_0_#00C875]' : 'text-gbc-muted hover:text-gbc-text hover:bg-gbc-surface'}`}
+                                >
+                                    <Icon name={item.icon} size={18} className={activeTab === item.id ? 'text-gbc-primary' : 'opacity-70'} />
+                                    {item.label}
+                                </button>
+                            ))}
+                        </nav>
+                        <div className="p-4 border-t border-gbc-border space-y-3">
+                            <div className="flex items-center gap-3 px-2">
+                                <div className="w-8 h-8 rounded-full bg-gbc-primary/20 text-gbc-primary border border-gbc-primary/30 flex items-center justify-center font-bold text-xs shrink-0">
+                                    {userProfile?.displayName?.charAt(0) || 'U'}
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                    <p className="text-sm font-semibold text-gbc-text truncate">{userProfile?.displayName || 'Worship Team Member'}</p>
+                                    <p className="text-xs text-gbc-muted truncate">{userProfile?.role || 'Member'}</p>
+                                </div>
+                            </div>
+                            <Button variant="secondary" className="w-full text-sm py-2" onClick={() => signOut(auth)}>
+                                <Icon name="log-out" size={14} /> Sign Out
+                            </Button>
+                        </div>
+                    </aside>
+
+                    {/* Mobile Header & Content */}
+                    <div className="flex-1 flex flex-col min-w-0 z-20">
+                        <header className="md:hidden flex items-center justify-between p-4 border-b border-gbc-border bg-gbc-surface/80 backdrop-blur-md sticky top-0 z-30">
+                            <div className="flex items-center gap-2">
+                                <Logo href="#" size={28} />
+                                <span className="font-heading font-bold text-sm sm:text-base">WorshipFlow</span>
+                            </div>
+                            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-gbc-text p-1">
+                                <Icon name={isMobileMenuOpen ? "x" : "menu"} size={24} />
+                            </button>
+                        </header>
+
+                        {isMobileMenuOpen && (
+                            <div className="md:hidden absolute top-[65px] left-0 w-full h-[calc(100vh-65px)] bg-gbc-bg/95 backdrop-blur-xl z-40 p-4 flex flex-col overflow-y-auto">
+                                <nav className="flex-1 space-y-2">
+                                    {navItems.map(item => (
+                                        <button key={item.id} onClick={() => {setActiveTab(item.id); setIsMobileMenuOpen(false);}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium ${activeTab === item.id ? 'bg-gbc-primary/10 text-gbc-primary border border-gbc-primary/20' : 'text-gbc-muted'}`}>
+                                            <Icon name={item.icon} size={20} /> {item.label}
+                                        </button>
+                                    ))}
+                                </nav>
+                                <div className="pt-4 mt-auto border-t border-gbc-border space-y-3">
+                                    <div className="flex items-center gap-3 px-2">
+                                        <div className="w-8 h-8 rounded-full bg-gbc-primary/20 text-gbc-primary border border-gbc-primary/30 flex items-center justify-center font-bold text-xs shrink-0">
+                                            {userProfile?.displayName?.charAt(0) || 'U'}
+                                        </div>
+                                        <div className="flex-1 overflow-hidden">
+                                            <p className="text-sm font-semibold text-gbc-text truncate">{userProfile?.displayName || 'Worship Team Member'}</p>
+                                            <p className="text-xs text-gbc-muted truncate">{userProfile?.role || 'Member'}</p>
+                                        </div>
+                                    </div>
+                                    <Button variant="secondary" className="w-full" onClick={() => signOut(auth)}>Sign Out</Button>
+                                </div>
+                            </div>
+                        )}
+
+                        <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10 relative">
+                            <div className="max-w-6xl mx-auto relative z-10">
+                                {renderContent()}
+                            </div>
+                        </main>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const {user, loading} = useAppContext();
+
+            if (loading) {
+                return <div className="h-screen flex items-center justify-center bg-transparent text-gbc-primary"><Icon name="loader-2" className="animate-spin" size={40} /></div>;
+            }
+
+            return (
+                <>
+                    <ParticleBackground />
+                    {user ? <MainLayout /> : <LoginScreen />}
+                </>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <AppProvider>
+                <App />
+            </AppProvider>
+        );
+    </script>
+</body>
+
+</html>
